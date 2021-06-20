@@ -4,10 +4,10 @@ cmake_minimum_required (VERSION 3.5)
 
 add_definitions(-std=c++17)
 
-set(CXX_FLAGS "-Wall")
+set(CXX_FLAGS "-Wall -Werror")
 set(CMAKE_CXX_FLAGS, "${CXX_FLAGS}")
 
-set(sources src/main.cpp src/vehicle.cpp src/cost.cpp)
+set(sources src/main.cpp src/traffic.cpp src/cost.cpp src/map.cpp)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
