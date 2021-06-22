@@ -40,7 +40,15 @@ Lane DetermineLane(double d) {
     return Lane::OFFROAD;
 }
 
+Vehicle::Vehicle() {}
+
+Vehicle::~Vehicle() {}
+
 Vehicle::Vehicle(const nlohmann::json& json_data) {
+   Init(json_data);
+}
+
+void Vehicle::Init(const nlohmann::json& json_data) {
     x = json_data["x"];
     y = json_data["y"];
     s = json_data["s"];
@@ -48,6 +56,22 @@ Vehicle::Vehicle(const nlohmann::json& json_data) {
     yaw = json_data["yaw"];
     speed = json_data["speed"];
     lane = DetermineLane(d);
+}
+
+std::vector<double> Vehicle::DifferentiateCoeffs(const std::vector<double> &coeffs) {
+  std::vector<double> diff_coeffs;
+  for (size_t i = 1; i < coeffs.size(); i++) {
+    diff_coeffs.push_back(i * coeffs[i]);
+  }
+  return diff_coeffs;
+}
+
+double Vehicle::EvaluateCoeffs(const std::vector<double> &coeffs, const double time) {
+  double eval{0};
+  for (int i = 0; i < coeffs.size(); i++) {
+    eval += coeffs[i] * pow(time, i);
+  }
+  return eval;
 }
 
 void Vehicle::UpdateStates(const bool car_left, const bool car_right) {

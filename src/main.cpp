@@ -1,5 +1,6 @@
 #include <uWS/uWS.h>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -8,17 +9,17 @@
 
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
-#include "helpers.h"
+#include "helpers.hpp"
 #include "json.hpp"
+#include "map.hpp"
 #include "spline.h"
 #include "traffic.hpp"
-#include "map.hpp"
 
 // for convenience
 using std::vector;
 
 constexpr const char* kMapFile = "../data/highway_map.csv";
-constexpr double max_s = 6945.554;
+constexpr double kMaxS = 6945.554;
 constexpr double kTimeDelta = 0.02;
 constexpr double kMaxSpeed = 50;
 constexpr double kMaxAcceleration = 0.225;
@@ -41,13 +42,12 @@ int GetLaneDistance(traffic::Lane lane) {
     }
 }
 
-
-void PredictVehicle(const nlohmann::json &sensor_fusion, traffic::Vehicle &ego_vehicle, size_t previous_path_size) {
+void PredictVehicle(const nlohmann::json& sensor_fusion,
+                    traffic::Vehicle& ego_vehicle, size_t previous_path_size) {
     bool car_ahead{false};
     bool car_left{false};
     bool car_right{false};
-    for (size_t car_id = 0; car_id < sensor_fusion.size();
-            car_id++) {
+    for (size_t car_id = 0; car_id < sensor_fusion.size(); car_id++) {
         // [ id, x, y, vx, vy, s, d]
         int id = sensor_fusion[car_id][0];
         int x = sensor_fusion[car_id][1];
@@ -60,17 +60,13 @@ void PredictVehicle(const nlohmann::json &sensor_fusion, traffic::Vehicle &ego_v
         if (car_lane == traffic::Lane::OFFROAD) continue;
 
         double v = std::sqrt(vx * vx + vy * vy);
-        double car_prediction =
-            s + v * previous_path_size * kTimeDelta;
+        double car_prediction = s + v * previous_path_size * kTimeDelta;
         if (ego_vehicle.lane == car_lane) {
-            car_ahead |= s > ego_vehicle.s &&
-                            s - ego_vehicle.s < 30;
+            car_ahead |= s > ego_vehicle.s && s - ego_vehicle.s < 30;
         } else if (ego_vehicle.lane > car_lane) {
-            car_left |= ego_vehicle.s - 30 < s &&
-                        ego_vehicle.s + 30 > s;
+            car_left |= ego_vehicle.s - 30 < s && ego_vehicle.s + 30 > s;
         } else if (ego_vehicle.lane < car_lane) {
-            car_right |= ego_vehicle.s - 30 < s &&
-                            ego_vehicle.s + 30 > s;
+            car_right |= ego_vehicle.s - 30 < s && ego_vehicle.s + 30 > s;
         }
     }
     ego_vehicle.UpdateStates(car_left, car_right);
@@ -83,12 +79,13 @@ int main() {
     // The max s value before wrapping around the track back to 0
     MapData map_data;
     map_data.ReadMap(kMapFile);
+    traffic::Vehicle ego_vehicle;
 
     double ref_speed{0.0};  // mph
 
-    h.onMessage([&map_data, &ref_speed](uWS::WebSocket<uWS::SERVER> ws,
-                                        char* data, size_t length,
-                                        uWS::OpCode opCode) {
+    h.onMessage([&map_data, &ego_vehicle, &ref_speed](
+                    uWS::WebSocket<uWS::SERVER> ws, char* data, size_t length,
+                    uWS::OpCode opCode) {
         // "42" at the start of the message means there's a websocket message
         // event. The 4 signifies a websocket message The 2 signifies a
         // websocket event
@@ -103,7 +100,7 @@ int main() {
                     // j[1] is the data JSON object
 
                     // Main car's localization Data
-                    traffic::Vehicle ego_vehicle(j[1]);
+                    ego_vehicle.Init(j[1]);
 
                     // Previous path data given to the Planner
                     auto previous_path_x = j[1]["previous_path_x"];
@@ -140,8 +137,8 @@ int main() {
                         double car_prediction =
                             s + v * previous_path_x.size() * kTimeDelta;
                         if (ego_vehicle.lane == car_lane) {
-                            car_ahead |= s > ego_vehicle.s &&
-                                         s - ego_vehicle.s < 30;
+                            car_ahead |=
+                                s > ego_vehicle.s && s - ego_vehicle.s < 30;
                         } else if (ego_vehicle.lane > car_lane) {
                             car_left |= ego_vehicle.s - 30 < s &&
                                         ego_vehicle.s + 30 > s;
@@ -151,12 +148,154 @@ int main() {
                         }
                     }
                     // Prediction over
-                    vector<double> path_x(5), path_y(5), path_s(5), path_d(5);
-                    int nex_waypoints_id = NextWaypoint(ego_vehicle.x, ego_vehicle.y, ego_vehicle.yaw, map_data);
-                    for(size_t i = 0; i < 5; i++) {
-                        // int waypoint_id  ()
+
+                    // Define next waypoints
+                    Path path;
+                    int next_waypoints_id =
+                        NextWaypoint(ego_vehicle.x, ego_vehicle.y,
+                                     ego_vehicle.yaw, map_data);
+                    for (int i = -2; i < 5; i++) {
+                        int waypoint_id =
+                            (next_waypoints_id + i) % map_data.Size();
+                        if (waypoint_id < 0) {
+                            waypoint_id += map_data.Size();
+                        }
+                        double current_s = map_data.waypoints_s[waypoint_id];
+                        const double next_s =
+                            map_data.waypoints_s[next_waypoints_id];
+
+                        // make points continuos for spline functionality
+                        if (i < 0 && current_s > next_s) {
+                            current_s -= kMaxS;
+                        } else if (i > 0 && current_s < next_s) {
+                            current_s += kMaxS;
+                        }
+
+                        path.x.push_back(map_data.waypoints_x[waypoint_id]);
+                        path.y.push_back(map_data.waypoints_y[waypoint_id]);
+                        path.s.push_back(map_data.waypoints_s[current_s]);
+                        path.dx.push_back(map_data.waypoints_dx[waypoint_id]);
+                        path.dy.push_back(map_data.waypoints_dy[waypoint_id]);
                     }
-                    //Construct
+                    // Finish defining next waypoints
+                    // Interpolate points
+                    const double interpolation_coeff{0.5};
+                    const int num_interpolation_points =
+                        (path.s[path.s.size() - 1] - path.s[0]) /
+                        interpolation_coeff;
+                    vector<double> interpolated_points_x, interpolated_points_y,
+                        interpolated_points_s, interpolated_points_dx,
+                        interpolated_points_dy;
+
+                    for (int i = 0; i < num_interpolation_points; i++) {
+                        interpolated_points_s.push_back(
+                            path.s[0] + i * interpolation_coeff);
+                    }
+                    interpolated_points_x =
+                        Interpolate(path.s, path.x, interpolation_coeff,
+                                    num_interpolation_points);
+                    interpolated_points_y =
+                        Interpolate(path.s, path.y, interpolation_coeff,
+                                    num_interpolation_points);
+                    interpolated_points_dx =
+                        Interpolate(path.s, path.dx, interpolation_coeff,
+                                    num_interpolation_points);
+                    interpolated_points_dy =
+                        Interpolate(path.s, path.dy, interpolation_coeff,
+                                    num_interpolation_points);
+                    // Finish interpolation
+
+                    // Determine ego vehicle
+                    size_t subpath_size =
+                        std::min(25, (int)previous_path_x.size());
+                    double trajectory_start_time = subpath_size * kTimeDelta;
+                    double pos_s, s_dot, s_ddot, pos_d, d_dot, d_ddot;
+                    double pos_x, pos_y, pos_x2, pos_y2, angle, vel_x1, vel_y1,
+                        pos_x3, pos_y3, vel_x2, vel_y2, acc_x, acc_y;
+
+                    if (subpath_size < 4) {
+                        pos_x = ego_vehicle.x;
+                        pos_y = ego_vehicle.y;
+                        angle = deg2rad(ego_vehicle.yaw);
+                        pos_s = ego_vehicle.s;
+                        pos_d = ego_vehicle.d;
+                        s_dot = ego_vehicle.speed;
+                        d_dot = 0;
+                        s_ddot = 0;
+                        d_ddot = 0;
+                    } else {
+                        pos_x = previous_path_x[subpath_size - 1];
+                        pos_y = previous_path_y[subpath_size - 1];
+                        pos_x2 = previous_path_x[subpath_size - 2];
+                        pos_y2 = previous_path_y[subpath_size - 2];
+                        angle = atan2(pos_y - pos_y2, pos_x - pos_x2);
+
+                        std::vector<double> frenet = GetFrenet(
+                            pos_x, pos_y, angle, interpolated_points_x,
+                            interpolated_points_y);
+                        pos_s = frenet[0];
+                        pos_d = frenet[0];
+
+                        int next_interp_waypoint_index = NextWaypoint(
+                            pos_x, pos_y, angle, interpolated_points_x,
+                            interpolated_points_y);
+
+                        double dx =
+                            interpolated_points_dx[next_interp_waypoint_index -
+                                                   1];
+                        double dy =
+                            interpolated_points_dy[next_interp_waypoint_index -
+                                                   1];
+
+                        double sx = -dy;
+                        double sy = dx;
+                        vel_x1 = (pos_x - pos_x2) / kTimeDelta;
+                        vel_y1 = (pos_y - pos_y2) / kTimeDelta;
+                        s_dot = vel_x1 * sx + vel_y1 * sy;
+                        d_dot = vel_x1 * dx + vel_y1 * dy;
+
+                        pos_x3 = previous_path_x[subpath_size - 3];
+                        pos_y3 = previous_path_y[subpath_size - 3];
+                        vel_x2 = (pos_x2 - pos_x3) / kTimeDelta;
+                        vel_y2 = (pos_y2 - pos_y3) / kTimeDelta;
+                        acc_x = (vel_x1 - vel_x2) / kTimeDelta;
+                        acc_y = (vel_y1 - vel_y2) / kTimeDelta;
+                        s_ddot = acc_x * sx + acc_y * sy;
+                        d_ddot = acc_x * dx + acc_y * dy;
+
+                        double eval_time, pos_s2, pos_d2, s_dot2, d_dot2,
+                            s_ddot2, d_ddot2;
+                        auto s_dot_coeffs = ego_vehicle.DifferentiateCoeffs(
+                            ego_vehicle.s_traj_coeffs);
+                        auto d_dot_coeffs = ego_vehicle.DifferentiateCoeffs(
+                            ego_vehicle.d_traj_coeffs);
+                        auto s_ddot_coeffs =
+                            ego_vehicle.DifferentiateCoeffs(s_dot_coeffs);
+                        auto d_ddot_coeffs =
+                            ego_vehicle.DifferentiateCoeffs(d_dot_coeffs);
+                        eval_time = (50 - subpath_size) * kTimeDelta;
+                        pos_s2 = ego_vehicle.EvaluateCoeffs(
+                            ego_vehicle.s_traj_coeffs, eval_time);
+                        pos_d2 = ego_vehicle.EvaluateCoeffs(
+                            ego_vehicle.d_traj_coeffs, eval_time);
+                        s_dot2 =
+                            ego_vehicle.EvaluateCoeffs(s_dot_coeffs, eval_time);
+                        d_dot2 =
+                            ego_vehicle.EvaluateCoeffs(d_dot_coeffs, eval_time);
+                        s_ddot2 = ego_vehicle.EvaluateCoeffs(s_ddot_coeffs,
+                                                             eval_time);
+                        d_ddot2 = ego_vehicle.EvaluateCoeffs(d_ddot_coeffs,
+                                                             eval_time);
+                    }
+
+                    ego_vehicle.s = pos_s;
+                    ego_vehicle.s_d = s_dot;
+                    ego_vehicle.s_dd = s_ddot;
+                    ego_vehicle.d = pos_d;
+                    ego_vehicle.d_d = d_dot;
+                    ego_vehicle.d_dd = d_ddot;
+
+                    // Construct
 
                     // Behaviour planning
                     double speed_diff{0};
@@ -173,11 +312,13 @@ int main() {
                             speed_diff -= kMaxAcceleration;
                         }
                     } else {
-                        if (lane != traffic::Lane::MIDDLE) {  // if we are not on the
-                                                     // center lane.
+                        if (lane !=
+                            traffic::Lane::MIDDLE) {  // if we are not on the
+                                                      // center lane.
                             if ((lane == traffic::Lane::LEFT && !car_right) ||
                                 (lane == traffic::Lane::RIGHT && !car_left)) {
-                                lane = traffic::Lane::MIDDLE;  // Back to center.
+                                lane =
+                                    traffic::Lane::MIDDLE;  // Back to center.
                             }
                         }
                         if (ref_speed < kMaxSpeed) {

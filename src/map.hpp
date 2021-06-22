@@ -18,3 +18,11 @@ struct MapData {
     std::vector<double> waypoints_dx;
     std::vector<double> waypoints_dy;
 };
+
+struct Path{
+    std::vector<double> x;
+    std::vector<double> y;
+    std::vector<double> s;
+    std::vector<double> dx;
+    std::vector<double> dy;
+};

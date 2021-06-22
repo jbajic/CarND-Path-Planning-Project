@@ -1,11 +1,11 @@
-#ifndef HELPERS_H
-#define HELPERS_H
-
+#pragma once
 #include <math.h>
 
 #include <string>
 #include <vector>
+
 #include "map.hpp"
+#include "spline.h"
 
 // for convenience
 using std::string;
@@ -42,13 +42,14 @@ double distance(double x1, double y1, double x2, double y2) {
 }
 
 // Calculate closest waypoint to current x, y position
-int ClosestWaypoint(double x, double y, const MapData &map_data) {
+int ClosestWaypoint(double x, double y, const vector<double> &points_x,
+                    const vector<double> &points_y) {
     double closestLen = 100000;  // large number
     int closestWaypoint = 0;
 
-    for (int i = 0; i < map_data.waypoints_x.size(); ++i) {
-        double map_x = map_data.waypoints_x[i];
-        double map_y = map_data.waypoints_y[i];
+    for (int i = 0; i < points_x.size(); ++i) {
+        double map_x = points_x[i];
+        double map_y = points_y[i];
         double dist = distance(x, y, map_x, map_y);
         if (dist < closestLen) {
             closestLen = dist;
@@ -59,13 +60,18 @@ int ClosestWaypoint(double x, double y, const MapData &map_data) {
     return closestWaypoint;
 }
 
+int ClosestWaypoint(double x, double y, const MapData &map_data) {
+    return ClosestWaypoint(x, y, map_data.waypoints_x, map_data.waypoints_y);
+}
+
 // Returns next waypoint of the closest waypoint
-int NextWaypoint(double x, double y, double theta, const MapData &map_data) {
-    int closestWaypoint = ClosestWaypoint(x, y, map_data);
+int NextWaypoint(double x, double y, double theta,
+                 const vector<double> &points_x,
+                 const vector<double> &points_y) {
+    int closestWaypoint = ClosestWaypoint(x, y, points_x, points_y);
 
-    double map_x = map_data.waypoints_x[closestWaypoint];
-    double map_y = map_data.waypoints_y[closestWaypoint];
-
+    double map_x = points_x[closestWaypoint];
+    double map_y = points_y[closestWaypoint];
     double heading = atan2((map_y - y), (map_x - x));
 
     double angle = fabs(theta - heading);
@@ -73,7 +79,7 @@ int NextWaypoint(double x, double y, double theta, const MapData &map_data) {
 
     if (angle > pi() / 2) {
         ++closestWaypoint;
-        if (closestWaypoint == map_data.waypoints_x.size()) {
+        if (closestWaypoint == points_x.size()) {
             closestWaypoint = 0;
         }
     }
@@ -81,22 +87,27 @@ int NextWaypoint(double x, double y, double theta, const MapData &map_data) {
     return closestWaypoint;
 }
 
+int NextWaypoint(double x, double y, double theta, const MapData &map_data) {
+    return NextWaypoint(x, y, theta, map_data.waypoints_x,
+                        map_data.waypoints_y);
+}
+
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta,
-                         const MapData &map_data)
-                        {
-    int next_wp = NextWaypoint(x, y, theta, map_data);
+vector<double> GetFrenet(double x, double y, double theta,
+                         const vector<double> &points_x,
+                         const vector<double> &points_y) {
+    int next_wp = NextWaypoint(x, y, theta, points_x, points_y);
 
     int prev_wp;
     prev_wp = next_wp - 1;
     if (next_wp == 0) {
-        prev_wp = map_data.waypoints_x.size() - 1;
+        prev_wp = points_x.size() - 1;
     }
 
-    double n_x = map_data.waypoints_x[next_wp] - map_data.waypoints_x[prev_wp];
-    double n_y = map_data.waypoints_y[next_wp] - map_data.waypoints_y[prev_wp];
-    double x_x = x - map_data.waypoints_x[prev_wp];
-    double x_y = y - map_data.waypoints_y[prev_wp];
+    double n_x = points_x[next_wp] - points_x[prev_wp];
+    double n_y = points_y[next_wp] - points_y[prev_wp];
+    double x_x = x - points_x[prev_wp];
+    double x_y = y - points_y[prev_wp];
 
     // find the projection of x onto n
     double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
@@ -106,8 +117,8 @@ vector<double> getFrenet(double x, double y, double theta,
     double frenet_d = distance(x_x, x_y, proj_x, proj_y);
 
     // see if d value is positive or negative by comparing it to a center point
-    double center_x = 1000 - map_data.waypoints_x[prev_wp];
-    double center_y = 2000 - map_data.waypoints_y[prev_wp];
+    double center_x = 1000 - points_x[prev_wp];
+    double center_y = 2000 - points_y[prev_wp];
     double centerToPos = distance(center_x, center_y, x_x, x_y);
     double centerToRef = distance(center_x, center_y, proj_x, proj_y);
 
@@ -118,13 +129,18 @@ vector<double> getFrenet(double x, double y, double theta,
     // calculate s value
     double frenet_s = 0;
     for (int i = 0; i < prev_wp; ++i) {
-        frenet_s +=
-            distance(map_data.waypoints_x[i], map_data.waypoints_y[i], map_data.waypoints_x[i + 1], map_data.waypoints_y[i + 1]);
+        frenet_s += distance(points_x[i], points_y[i], points_x[i + 1],
+                             points_y[i + 1]);
     }
 
     frenet_s += distance(0, 0, proj_x, proj_y);
 
     return {frenet_s, frenet_d};
+}
+
+vector<double> GetFrenet(double x, double y, double theta,
+                         const MapData &map_data) {
+    return GetFrenet(x, y, theta, map_data.waypoints_x, map_data.waypoints_y);
 }
 
 // Transform from Frenet s,d coordinates to Cartesian x,y
@@ -155,4 +171,15 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
     return {x, y};
 }
 
-#endif  // HELPERS_H
+vector<double> Interpolate(vector<double> points_x, vector<double> points_y,
+                           double step, size_t output_size) {
+    assert(points_x.size() == points_y.size());
+
+    tk::spline s;
+    s.set_points(points_x, points_y);
+    vector<double> output(output_size);
+    for (size_t i = 0; i < output_size; i++) {
+        output.push_back(s(points_x[0] + i * step));
+    }
+    return output;
+}
