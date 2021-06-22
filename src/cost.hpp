@@ -1,28 +1,41 @@
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
 #include "traffic.hpp"
 
-using std::map;
-using std::string;
-using std::vector;
-using traffic::Vehicle;
+namespace path_planning {
 
-// float calculate_cost(const Vehicle &vehicle,
-//                      const map<int, vector<Vehicle>> &predictions,
-//                      const vector<Vehicle> &trajectory);
+namespace cost {
 
-// float goal_distance_cost(const Vehicle &vehicle,
-//                          const vector<Vehicle> &trajectory,
-//                          const map<int, vector<Vehicle>> &predictions,
-//                          map<string, float> &data);
+constexpr double kVehicleRadius = 1.25;
 
-// float inefficiency_cost(const Vehicle &vehicle,
-//                         const vector<Vehicle> &trajectory,
-//                         const map<int, vector<Vehicle>> &predictions,
-//                         map<string, float> &data);
+double CollisionCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &predictions);
 
-// float lane_speed(const map<int, vector<Vehicle>> &predictions, int lane);
+double BufferCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &predictions);
 
-// map<string, float> get_helper_data(
-//     const Vehicle &vehicle, const vector<Vehicle> &trajectory,
-//     const map<int, vector<Vehicle>> &predictions);
+double InLaneBufferCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &predictions);
+
+double EfficiencyCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &predictions);
+
+double NotMiddleLaneCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &predictions);
+
+}  // namespace cost
+
+}  // namespace path_planning

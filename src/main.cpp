@@ -2,27 +2,25 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
+// #include "Eigen-3.3/Eigen/Core"
+// #include "Eigen-3.3/Eigen/QR"
+#include "constants.hpp"
 #include "helpers.hpp"
 #include "json.hpp"
 #include "map.hpp"
+#include "path_planning.hpp"
 #include "spline.h"
 #include "traffic.hpp"
 
 // for convenience
 using std::vector;
-
-constexpr const char* kMapFile = "../data/highway_map.csv";
-constexpr double kMaxS = 6945.554;
-constexpr double kTimeDelta = 0.02;
-constexpr double kMaxSpeed = 50;
-constexpr double kMaxAcceleration = 0.225;
 
 int GetLaneDistance(traffic::Lane lane) {
     // Return lane distance from the middle of the lane
@@ -119,34 +117,52 @@ int main() {
                      */
 
                     // Prediction
-                    bool car_ahead{false}, car_left{false}, car_right{false};
-                    for (size_t car_id = 0; car_id < sensor_fusion.size();
-                         car_id++) {
-                        // [ id, x, y, vx, vy, s, d]
-                        int id = sensor_fusion[car_id][0];
-                        int x = sensor_fusion[car_id][1];
-                        int y = sensor_fusion[car_id][2];
-                        int vx = sensor_fusion[car_id][3];
-                        int vy = sensor_fusion[car_id][4];
-                        int s = sensor_fusion[car_id][5];
-                        int d = sensor_fusion[car_id][6];
-                        traffic::Lane car_lane = traffic::DetermineLane(d);
-                        if (car_lane == traffic::Lane::OFFROAD) continue;
+                    int subpath_size =
+                        std::min(25, static_cast<int>(previous_path_x.size()));
+                    const double trajectory_start_time =
+                        subpath_size * kTimeDelta;
+                    const double duration =
+                        kNumOfSample * dt - subpath_size * kTimeDelta;
 
-                        double v = std::sqrt(vx * vx + vy * vy);
-                        double car_prediction =
-                            s + v * previous_path_x.size() * kTimeDelta;
-                        if (ego_vehicle.lane == car_lane) {
-                            car_ahead |=
-                                s > ego_vehicle.s && s - ego_vehicle.s < 30;
-                        } else if (ego_vehicle.lane > car_lane) {
-                            car_left |= ego_vehicle.s - 30 < s &&
-                                        ego_vehicle.s + 30 > s;
-                        } else if (ego_vehicle.lane < car_lane) {
-                            car_right |= ego_vehicle.s - 30 < s &&
-                                         ego_vehicle.s + 30 > s;
-                        }
+                    vector<traffic::OtherVehicle> vehicles;
+                    std::unordered_map<int,
+                                       std::vector<std::pair<double, double>>>
+                        cars_predictions;
+                    for (const auto& car_data : sensor_fusion) {
+                        // This is what car_data contains [ id, x, y, vx, vy, s,
+                        // d]
+                        traffic::OtherVehicle other_car(car_data);
+                        vehicles.push_back(other_car);
+                        cars_predictions[other_car.id] =
+                            other_car.GeneratePrediction(trajectory_start_time,
+                                                         duration);
                     }
+
+                    bool car_ahead{false}, car_left{false}, car_right{false};
+                    for (const auto& vehicle : vehicles) {
+                        double distance_from_ego_s{
+                            std::abs(vehicle.s - ego_vehicle.s)};
+                        if (distance_from_ego_s < 10) {
+                            std::cout << "Vehicle " << vehicle.id << " is "
+                                      << distance_from_ego_s << " m "
+                                      << " from ego vehicle\n";
+                            double distance_from_ego_d =
+                                std::abs(vehicle.d - ego_vehicle.d);
+
+                            if (distance_from_ego_d > 2 &&
+                                distance_from_ego_d < 6) {
+                                car_right = true;
+                            } else if (distance_from_ego_d < -2 &&
+                                       distance_from_ego_d > -6) {
+                                car_left = true;
+                            } else if (distance_from_ego_d > -2 &&
+                                       distance_from_ego_d < 2) {
+                                car_ahead = true;
+                            }
+                        }
+                        if (car_left && car_ahead && car_right) break;
+                    }
+                    ego_vehicle.UpdateStates(car_left, car_right);
                     // Prediction over
 
                     // Define next waypoints
@@ -206,9 +222,7 @@ int main() {
                     // Finish interpolation
 
                     // Determine ego vehicle
-                    size_t subpath_size =
-                        std::min(25, (int)previous_path_x.size());
-                    double trajectory_start_time = subpath_size * kTimeDelta;
+
                     double pos_s, s_dot, s_ddot, pos_d, d_dot, d_ddot;
                     double pos_x, pos_y, pos_x2, pos_y2, angle, vel_x1, vel_y1,
                         pos_x3, pos_y3, vel_x2, vel_y2, acc_x, acc_y;
@@ -297,151 +311,172 @@ int main() {
 
                     // Construct
 
-                    // Behaviour planning
-                    double speed_diff{0};
-                    traffic::Lane lane = ego_vehicle.lane;
-                    if (car_ahead) {  // Car ahead
-                        if (!car_left && lane > traffic::Lane::LEFT) {
-                            // if there is no car left and there is a left lane.
-                            --lane;  // Change lane left.
-                        } else if (!car_right && lane != traffic::Lane::RIGHT) {
-                            // if there is no car right and there is a right
-                            // lane.
-                            ++lane;  // Change lane right.
-                        } else {
-                            speed_diff -= kMaxAcceleration;
-                        }
-                    } else {
-                        if (lane !=
-                            traffic::Lane::MIDDLE) {  // if we are not on the
-                                                      // center lane.
-                            if ((lane == traffic::Lane::LEFT && !car_right) ||
-                                (lane == traffic::Lane::RIGHT && !car_left)) {
-                                lane =
-                                    traffic::Lane::MIDDLE;  // Back to center.
-                            }
-                        }
-                        if (ref_speed < kMaxSpeed) {
-                            speed_diff += kMaxAcceleration;
-                        }
+                    // Behaviour planning START
+                    vector<vector<double>> best_frenet_trajectory, best_target;
+                    double best_cost = std::numeric_limits<double>::max();
+                    string best_traj_state = "";
+                    for (auto &state : ego_vehicle.GetStates()) {
+                        vector<vector<double>> target_s_and_d =
+                            GetTargetForState(
+                                state, cars_predictions, ego_vehicle, duration, car_ahead);
+
+                        vector<vector<double>> trajectory = path_planning::GenerateTrajectory(target_s_and_d, ego_vehicle, duration);
+                        double cost = path_planning::CalculateCost(trajectory, cars_predictions);
+
+
                     }
+                    // Behaviour planning END
+                    // double speed_diff{0};
+                    // traffic::Lane lane = ego_vehicle.lane;
+                    // if (car_ahead) {  // Car ahead
+                    //     if (!car_left && lane > traffic::Lane::LEFT) {
+                    //         // if there is no car left and there is a left
+                    //         lane.
+                    //         --lane;  // Change lane left.
+                    //     } else if (!car_right && lane !=
+                    //     traffic::Lane::RIGHT) {
+                    //         // if there is no car right and there is a right
+                    //         // lane.
+                    //         ++lane;  // Change lane right.
+                    //     } else {
+                    //         speed_diff -= kMaxAcceleration;
+                    //     }
+                    // } else {
+                    //     if (lane !=
+                    //         traffic::Lane::MIDDLE) {  // if we are not on the
+                    //                                   // center lane.
+                    //         if ((lane == traffic::Lane::LEFT && !car_right)
+                    //         ||
+                    //             (lane == traffic::Lane::RIGHT && !car_left))
+                    //             { lane =
+                    //                 traffic::Lane::MIDDLE;  // Back to
+                    //                 center.
+                    //         }
+                    //     }
+                    //     if (ref_speed < kMaxSpeed) {
+                    //         speed_diff += kMaxAcceleration;
+                    //     }
+                    // }
 
-                    vector<double> ptsx;
-                    vector<double> ptsy;
-                    double ref_x = ego_vehicle.x;
-                    double ref_y = ego_vehicle.y;
-                    double ref_yaw = deg2rad(ego_vehicle.yaw);
-                    if (previous_path_x.size() < 2) {
-                        // There are not too many...
-                        double prev_car_x =
-                            ego_vehicle.x - cos(ego_vehicle.yaw);
-                        double prev_car_y =
-                            ego_vehicle.y - sin(ego_vehicle.yaw);
+                    // vector<double> ptsx;
+                    // vector<double> ptsy;
+                    // double ref_x = ego_vehicle.x;
+                    // double ref_y = ego_vehicle.y;
+                    // double ref_yaw = deg2rad(ego_vehicle.yaw);
+                    // if (previous_path_x.size() < 2) {
+                    //     // There are not too many...
+                    //     double prev_car_x =
+                    //         ego_vehicle.x - cos(ego_vehicle.yaw);
+                    //     double prev_car_y =
+                    //         ego_vehicle.y - sin(ego_vehicle.yaw);
 
-                        ptsx.push_back(prev_car_x);
-                        ptsx.push_back(ego_vehicle.x);
+                    //     ptsx.push_back(prev_car_x);
+                    //     ptsx.push_back(ego_vehicle.x);
 
-                        ptsy.push_back(prev_car_y);
-                        ptsy.push_back(ego_vehicle.y);
-                    } else {
-                        // Use the last two points.
-                        ref_x = previous_path_x[previous_path_x.size() - 1];
-                        ref_y = previous_path_y[previous_path_x.size() - 1];
+                    //     ptsy.push_back(prev_car_y);
+                    //     ptsy.push_back(ego_vehicle.y);
+                    // } else {
+                    //     // Use the last two points.
+                    //     ref_x = previous_path_x[previous_path_x.size() - 1];
+                    //     ref_y = previous_path_y[previous_path_x.size() - 1];
 
-                        double ref_x_prev =
-                            previous_path_x[previous_path_x.size() - 2];
-                        double ref_y_prev =
-                            previous_path_y[previous_path_x.size() - 2];
-                        ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+                    //     double ref_x_prev =
+                    //         previous_path_x[previous_path_x.size() - 2];
+                    //     double ref_y_prev =
+                    //         previous_path_y[previous_path_x.size() - 2];
+                    //     ref_yaw = atan2(ref_y - ref_y_prev, ref_x -
+                    //     ref_x_prev);
 
-                        ptsx.push_back(ref_x_prev);
-                        ptsx.push_back(ref_x);
+                    //     ptsx.push_back(ref_x_prev);
+                    //     ptsx.push_back(ref_x);
 
-                        ptsy.push_back(ref_y_prev);
-                        ptsy.push_back(ref_y);
-                    }
+                    //     ptsy.push_back(ref_y_prev);
+                    //     ptsy.push_back(ref_y);
+                    // }
 
-                    // Setting up target points in the future.
-                    vector<double> next_wp0 =
-                        getXY(ego_vehicle.s + 30, GetLaneDistance(lane),
-                              map_data.waypoints_s, map_data.waypoints_x,
-                              map_data.waypoints_y);
-                    vector<double> next_wp1 =
-                        getXY(ego_vehicle.s + 60, GetLaneDistance(lane),
-                              map_data.waypoints_s, map_data.waypoints_x,
-                              map_data.waypoints_y);
-                    vector<double> next_wp2 =
-                        getXY(ego_vehicle.s + 90, GetLaneDistance(lane),
-                              map_data.waypoints_s, map_data.waypoints_x,
-                              map_data.waypoints_y);
+                    // // Setting up target points in the future.
+                    // vector<double> next_wp0 =
+                    //     getXY(ego_vehicle.s + 30, GetLaneDistance(lane),
+                    //           map_data.waypoints_s, map_data.waypoints_x,
+                    //           map_data.waypoints_y);
+                    // vector<double> next_wp1 =
+                    //     getXY(ego_vehicle.s + 60, GetLaneDistance(lane),
+                    //           map_data.waypoints_s, map_data.waypoints_x,
+                    //           map_data.waypoints_y);
+                    // vector<double> next_wp2 =
+                    //     getXY(ego_vehicle.s + 90, GetLaneDistance(lane),
+                    //           map_data.waypoints_s, map_data.waypoints_x,
+                    //           map_data.waypoints_y);
 
-                    ptsx.push_back(next_wp0[0]);
-                    ptsx.push_back(next_wp1[0]);
-                    ptsx.push_back(next_wp2[0]);
+                    // ptsx.push_back(next_wp0[0]);
+                    // ptsx.push_back(next_wp1[0]);
+                    // ptsx.push_back(next_wp2[0]);
 
-                    ptsy.push_back(next_wp0[1]);
-                    ptsy.push_back(next_wp1[1]);
-                    ptsy.push_back(next_wp2[1]);
+                    // ptsy.push_back(next_wp0[1]);
+                    // ptsy.push_back(next_wp1[1]);
+                    // ptsy.push_back(next_wp2[1]);
 
-                    for (size_t i = 0; i < ptsx.size(); i++) {
-                        double shift_x = ptsx[i] - ref_x;
-                        double shift_y = ptsy[i] - ref_y;
+                    // for (size_t i = 0; i < ptsx.size(); i++) {
+                    //     double shift_x = ptsx[i] - ref_x;
+                    //     double shift_y = ptsy[i] - ref_y;
 
-                        ptsx[i] = shift_x * std::cos(0 - ref_yaw) -
-                                  shift_y * std::sin(0 - ref_yaw);
-                        ptsy[i] = shift_x * std::sin(0 - ref_yaw) +
-                                  shift_y * std::cos(0 - ref_yaw);
-                    }
+                    //     ptsx[i] = shift_x * std::cos(0 - ref_yaw) -
+                    //               shift_y * std::sin(0 - ref_yaw);
+                    //     ptsy[i] = shift_x * std::sin(0 - ref_yaw) +
+                    //               shift_y * std::cos(0 - ref_yaw);
+                    // }
 
-                    tk::spline s;
-                    s.set_points(ptsx, ptsy);
+                    // tk::spline s;
+                    // s.set_points(ptsx, ptsy);
 
-                    // Output path points from previous path for continuity.
-                    vector<double> next_x_vals;
-                    vector<double> next_y_vals;
-                    for (size_t i = 0; i < previous_path_x.size(); i++) {
-                        next_x_vals.push_back(previous_path_x[i]);
-                        next_y_vals.push_back(previous_path_y[i]);
-                    }
+                    // // Output path points from previous path for continuity.
+                    // vector<double> next_x_vals;
+                    // vector<double> next_y_vals;
+                    // for (size_t i = 0; i < previous_path_x.size(); i++) {
+                    //     next_x_vals.push_back(previous_path_x[i]);
+                    //     next_y_vals.push_back(previous_path_y[i]);
+                    // }
 
-                    // Calculate distance y position on 30 m ahead.
-                    double target_x{30.0};
-                    double target_y = s(target_x);
-                    double target_dist =
-                        std::sqrt(target_x * target_x + target_y * target_y);
+                    // // Calculate distance y position on 30 m ahead.
+                    // double target_x{30.0};
+                    // double target_y = s(target_x);
+                    // double target_dist =
+                    //     std::sqrt(target_x * target_x + target_y * target_y);
 
-                    double x_add_on{0};
-                    for (size_t i = 1; i < 50 - previous_path_x.size(); i++) {
-                        ref_speed += speed_diff;
-                        if (ref_speed > kMaxSpeed) {
-                            ref_speed = kMaxSpeed;
-                        } else if (ref_speed < kMaxAcceleration) {
-                            ref_speed = kMaxAcceleration;
-                        }
-                        double N =
-                            target_dist / (kTimeDelta * ref_speed / 2.24);
-                        double x_point = x_add_on + target_x / N;
-                        double y_point = s(x_point);
+                    // double x_add_on{0};
+                    // for (size_t i = 1; i < 50 - previous_path_x.size(); i++)
+                    // {
+                    //     ref_speed += speed_diff;
+                    //     if (ref_speed > kMaxSpeed) {
+                    //         ref_speed = kMaxSpeed;
+                    //     } else if (ref_speed < kMaxAcceleration) {
+                    //         ref_speed = kMaxAcceleration;
+                    //     }
+                    //     double N =
+                    //         target_dist / (kTimeDelta * ref_speed / 2.24);
+                    //     double x_point = x_add_on + target_x / N;
+                    //     double y_point = s(x_point);
 
-                        x_add_on = x_point;
+                    //     x_add_on = x_point;
 
-                        double x_ref = x_point;
-                        double y_ref = y_point;
+                    //     double x_ref = x_point;
+                    //     double y_ref = y_point;
 
-                        x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
-                        y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
+                    //     x_point = x_ref * cos(ref_yaw) - y_ref *
+                    //     sin(ref_yaw); y_point = x_ref * sin(ref_yaw) + y_ref
+                    //     * cos(ref_yaw);
 
-                        x_point += ref_x;
-                        y_point += ref_y;
+                    //     x_point += ref_x;
+                    //     y_point += ref_y;
 
-                        next_x_vals.push_back(x_point);
-                        next_y_vals.push_back(y_point);
-                    }
+                    //     next_x_vals.push_back(x_point);
+                    //     next_y_vals.push_back(y_point);
+                    // }
 
-                    // Behaviour planning over
+                    // // Behaviour planning over
                     nlohmann::json msgJson;
-                    msgJson["next_x"] = next_x_vals;
-                    msgJson["next_y"] = next_y_vals;
+                    // msgJson["next_x"] = next_x_vals;
+                    // msgJson["next_y"] = next_y_vals;
 
                     auto msg = "42[\"control\"," + msgJson.dump() + "]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);

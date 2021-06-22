@@ -2,6 +2,7 @@
 
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "json.hpp"
@@ -23,6 +24,22 @@ Lane& operator--(Lane& lane);
 
 Lane DetermineLane(double d);
 
+struct OtherVehicle {
+    OtherVehicle(const nlohmann::json& json_data);
+
+    std::vector<std::pair<double, double>> GeneratePrediction(
+        const double traj_start_time, const double duration);
+
+    int id;
+    double x;
+    double y;
+    double vx;
+    double vy;
+    double s;
+    double d;
+    double speed;
+};
+
 class Vehicle {
    public:
     Vehicle();
@@ -33,11 +50,13 @@ class Vehicle {
 
     virtual ~Vehicle();
 
+    std::vector<std::string> GetStates() const;
+
     void UpdateStates(const bool car_left, const bool car_right);
 
-    std::vector<double> DifferentiateCoeffs(const std::vector<double> &coeffs);
+    std::vector<double> DifferentiateCoeffs(const std::vector<double>& coeffs);
 
-    double EvaluateCoeffs(const std::vector<double> &coeffs, const double time);
+    double EvaluateCoeffs(const std::vector<double>& coeffs, const double time);
 
     double x;
     double y;
@@ -56,5 +75,16 @@ class Vehicle {
    private:
     std::vector<std::string> available_states;
 };
+
+std::vector<std::vector<double>> GetTargetForState(
+    const std::string &state,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
+    const Vehicle& ego_vehicle,
+    const double duration, const bool car_just_ahead);
+
+std::vector<double> GetLeadingVehicleDataForLane(
+    const int target_lane,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
+    const Vehicle& ego_vehicle, const double duration);
 
 };  // namespace traffic

@@ -1,149 +1,138 @@
 #include "cost.hpp"
 
 #include <cmath>
-#include <functional>
-#include <iterator>
-#include <map>
-#include <string>
-#include <vector>
+#include <limits>
 
-#include "traffic.hpp"
+#include "constants.hpp"
 
-using std::string;
-using std::vector;
-using traffic::Vehicle;
+namespace path_planning {
+namespace cost {
 
-/**
-//  * TODO: change weights for cost functions.
-//  */
-// const float REACH_GOAL = pow(10, 6);
-// const float EFFICIENCY = pow(10, 5);
+/*
+ * A function that returns a value between 0 and 1 for x in the
+ * range [0, infinity] and -1 to 1 for x in the range [-infinity, infinity].
+ * Useful for cost functions.
+ * Taken from Trajectory exercise...
+ */
+constexpr double logistic(double value) {
+    return 2.0 / (1 + std::exp(-value)) - 1.0;
+}
 
-// // Here we have provided two possible suggestions for cost functions, but feel
-// //   free to use your own! The weighted cost over all cost functions is computed
-// //   in calculate_cost. The data from get_helper_data will be very useful in
-// //   your implementation of the cost functions below. Please see get_helper_data
-// //   for details on how the helper data is computed.
+constexpr double dt = 0.2;
+constexpr double kMaxObservableDistance = 120;
 
-// float goal_distance_cost(const Vehicle &vehicle,
-//                          const vector<Vehicle> &trajectory,
-//                          const map<int, vector<Vehicle>> &predictions,
-//                          map<string, float> &data) {
-//     // Cost increases based on distance of intended lane (for planning a lane
-//     //   change) and final lane of trajectory.
-//     // Cost of being out of goal lane also becomes larger as vehicle approaches
-//     //   goal distance.
-//     // This function is very similar to what you have already implemented in the
-//     //   "Implement a Cost Function in C++" quiz.
-//     float cost;
-//     float distance = data["distance_to_goal"];
-//     if (distance > 0) {
-//         cost = 1 - 2 * exp(-(abs(2.0 * vehicle.goal_lane -
-//                                  data["intended_lane"] - data["final_lane"]) /
-//                              distance));
-//     } else {
-//         cost = 1;
-//     }
+double DistanceOfCarInTrajectory(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::vector<std::pair<double, double>> &cars_predictions) {
+    double closest_car_distance = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < kNumOfSample; i++) {
+        double current_distance =
+            sqrt(pow(trajectory[0][i] - cars_predictions[i].first, 2.0) +
+                 pow(trajectory[1][i] - cars_predictions[i].second, 2));
+        if (current_distance < closest_car_distance) {
+            closest_car_distance = current_distance;
+        }
+    }
+    return closest_car_distance;
+}
 
-//     return cost;
-// }
+double ClosesDistanceOfAnyCarInTrajectory(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    double closest_car_distance = std::numeric_limits<double>::max();
+    for (const auto &[id, car_prediction] : cars_predictions) {
+        double current_distance =
+            DistanceOfCarInTrajectory(trajectory, car_prediction);
+        if (current_distance < closest_car_distance) {
+            closest_car_distance = current_distance;
+        }
+    }
+    return closest_car_distance;
+}
 
-// float inefficiency_cost(const Vehicle &vehicle,
-//                         const vector<Vehicle> &trajectory,
-//                         const map<int, vector<Vehicle>> &predictions,
-//                         map<string, float> &data) {
-//     // Cost becomes higher for trajectories with intended lane and final lane
-//     //   that have traffic slower than vehicle's target speed.
-//     // You can use the lane_speed function to determine the speed for a lane.
-//     // This function is very similar to what you have already implemented in
-//     //   the "Implement a Second Cost Function in C++" quiz.
-//     float proposed_speed_intended =
-//         lane_speed(predictions, data["intended_lane"]);
-//     if (proposed_speed_intended < 0) {
-//         proposed_speed_intended = vehicle.target_speed;
-//     }
+double ClosesDistanceOfAnyCarInLaneTrajectory(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    double closest_car_distance = std::numeric_limits<double>::max();
+    for (const auto &[id, car_prediction] : cars_predictions) {
+        double final_d = trajectory[1][trajectory[1].size() - 1];
+        int lane = final_d / 4;
+        double pred_final_d = car_prediction[car_prediction.size() - 1].second;
+        int pred_lane = pred_final_d / 4;
+        if (lane == pred_lane) {
+            double current_distance =
+                DistanceOfCarInTrajectory(trajectory, car_prediction);
+            if (current_distance < closest_car_distance &&
+                current_distance < kMaxObservableDistance) {
+                closest_car_distance = current_distance;
+            }
+        }
+    }
+    return closest_car_distance;
+}
 
-//     float proposed_speed_final = lane_speed(predictions, data["final_lane"]);
-//     if (proposed_speed_final < 0) {
-//         proposed_speed_final = vehicle.target_speed;
-//     }
+std::vector<double> VelocitiesForTrajectory(
+    const std::vector<std::vector<double>> &trajectory) {
+    std::vector<double> velocities(trajectory.size());
+    for (size_t i = 1; i < trajectory.size(); i++) {
+        velocities.emplace_back((trajectory[0][i] - trajectory[0][i - 1]) / dt);
+    }
+    return velocities;
+}
 
-//     float cost = (2.0 * vehicle.target_speed - proposed_speed_intended -
-//                   proposed_speed_final) /
-//                  vehicle.target_speed;
+double CollisionCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    assert(trajectory.size() == 2);
+    double nearest =
+        ClosesDistanceOfAnyCarInTrajectory(trajectory, cars_predictions);
+    if (nearest < 2 * kVehicleRadius) {
+        return 1;
+    }
+    return 0;
+}
 
-//     return cost;
-// }
+double BufferCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    assert(trajectory.size() == 2);
+    double nearest =
+        ClosesDistanceOfAnyCarInTrajectory(trajectory, cars_predictions);
+    return logistic(2 * kVehicleRadius / nearest);
+}
 
-// float lane_speed(const map<int, vector<Vehicle>> &predictions, int lane) {
-//     // All non ego vehicles in a lane have the same speed, so to get the speed
-//     //   limit for a lane, we can just find one vehicle in that lane.
-//     for (map<int, vector<Vehicle>>::const_iterator it = predictions.begin();
-//          it != predictions.end(); ++it) {
-//         int key = it->first;
-//         Vehicle vehicle = it->second[0];
-//         if (vehicle.lane == lane && key != -1) {
-//             return vehicle.v;
-//         }
-//     }
-//     // Found no vehicle in the lane
-//     return -1.0;
-// }
+double InLaneBufferCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    assert(trajectory.size() == 2);
+    double nearest =
+        ClosesDistanceOfAnyCarInLaneTrajectory(trajectory, cars_predictions);
+    return logistic(2 * kVehicleRadius / nearest);
+}
 
-// float calculate_cost(const Vehicle &vehicle,
-//                      const map<int, vector<Vehicle>> &predictions,
-//                      const vector<Vehicle> &trajectory) {
-//     // Sum weighted cost functions to get total cost for trajectory.
-//     map<string, float> trajectory_data =
-//         get_helper_data(vehicle, trajectory, predictions);
-//     float cost = 0.0;
+double EfficiencyCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    assert(trajectory.size() == 2);
+    std::vector<double> s_dot_traj = VelocitiesForTrajectory(trajectory);
+    double final_s_dot, total = 0;
+    final_s_dot = s_dot_traj[s_dot_traj.size() - 1];
+    return logistic((kMaxSpeed - final_s_dot) / kMaxSpeed);
+}
 
-//     // Add additional cost functions here.
-//     vector<std::function<float(const Vehicle &, const vector<Vehicle> &,
-//                                const map<int, vector<Vehicle>> &,
-//                                map<string, float> &)>>
-//         cf_list = {goal_distance_cost, inefficiency_cost};
-//     vector<float> weight_list = {REACH_GOAL, EFFICIENCY};
-
-//     for (int i = 0; i < cf_list.size(); ++i) {
-//         float new_cost =
-//             weight_list[i] *
-//             cf_list[i](vehicle, trajectory, predictions, trajectory_data);
-//         cost += new_cost;
-//     }
-
-//     return cost;
-// }
-
-// map<string, float> get_helper_data(
-//     const Vehicle &vehicle, const vector<Vehicle> &trajectory,
-//     const map<int, vector<Vehicle>> &predictions) {
-//     // Generate helper data to use in cost functions:
-//     // intended_lane: the current lane +/- 1 if vehicle is planning or
-//     //   executing a lane change.
-//     // final_lane: the lane of the vehicle at the end of the trajectory.
-//     // distance_to_goal: the distance of the vehicle to the goal.
-
-//     // Note that intended_lane and final_lane are both included to help
-//     //   differentiate between planning and executing a lane change in the
-//     //   cost functions.
-//     map<string, float> trajectory_data;
-//     Vehicle trajectory_last = trajectory[1];
-//     float intended_lane;
-
-//     if (trajectory_last.state.compare("PLCL") == 0) {
-//         intended_lane = trajectory_last.lane + 1;
-//     } else if (trajectory_last.state.compare("PLCR") == 0) {
-//         intended_lane = trajectory_last.lane - 1;
-//     } else {
-//         intended_lane = trajectory_last.lane;
-//     }
-
-//     float distance_to_goal = vehicle.goal_s - trajectory_last.s;
-//     float final_lane = trajectory_last.lane;
-//     trajectory_data["intended_lane"] = intended_lane;
-//     trajectory_data["final_lane"] = final_lane;
-//     trajectory_data["distance_to_goal"] = distance_to_goal;
-
-//     return trajectory_data;
-// }
+double NotMiddleLaneCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions) {
+    assert(trajectory.size() == 2);
+    double end_d = trajectory[1][trajectory[1].size() - 1];
+    return logistic(pow(end_d - 6, 2));
+}
+}  // namespace cost
+}  // namespace path_planning
