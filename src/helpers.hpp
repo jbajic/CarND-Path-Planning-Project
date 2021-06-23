@@ -171,15 +171,28 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s,
     return {x, y};
 }
 
-vector<double> Interpolate(vector<double> points_x, vector<double> points_y,
-                           double step, size_t output_size) {
+vector<double> Interpolate(const vector<double> &points_x, const vector<double> &points_y,
+                           const double step, const size_t output_size) {
     assert(points_x.size() == points_y.size());
 
     tk::spline s;
     s.set_points(points_x, points_y);
-    vector<double> output(output_size);
+    std::vector<double> output(output_size);
     for (size_t i = 0; i < output_size; i++) {
         output.push_back(s(points_x[0] + i * step));
+    }
+    return output;
+}
+
+vector<double> Interpolate(const vector<double> points_x,const vector<double> points_y,
+                           const vector<double> &coefficients) {
+    assert(points_x.size() == points_y.size());
+
+    tk::spline s;
+    s.set_points(points_x, points_y);
+    std::vector<double> output;
+    for (auto c: coefficients) {
+        output.push_back(s(c));
     }
     return output;
 }
