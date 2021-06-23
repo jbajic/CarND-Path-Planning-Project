@@ -1,6 +1,7 @@
 #include "cost.hpp"
 
 #include <cmath>
+#include <functional>
 #include <limits>
 
 #include "constants.hpp"
@@ -21,14 +22,16 @@ constexpr double logistic(double value) {
 constexpr double dt = 0.2;
 constexpr double kMaxObservableDistance = 120;
 
+
+
 double DistanceOfCarInTrajectory(
     const std::vector<std::vector<double>> &trajectory,
-    const std::vector<std::pair<double, double>> &cars_predictions) {
+    const std::vector<std::pair<double, double>> &car_predictions) {
     double closest_car_distance = std::numeric_limits<double>::max();
     for (size_t i = 0; i < kNumOfSample; i++) {
         double current_distance =
-            sqrt(pow(trajectory[0][i] - cars_predictions[i].first, 2.0) +
-                 pow(trajectory[1][i] - cars_predictions[i].second, 2));
+            sqrt(pow(trajectory[0][i] - car_predictions[i].first, 2.0) +
+                 pow(trajectory[1][i] - car_predictions[i].second, 2));
         if (current_distance < closest_car_distance) {
             closest_car_distance = current_distance;
         }
@@ -120,9 +123,9 @@ double EfficiencyCost(
     const std::unordered_map<int, std::vector<std::pair<double, double>>>
         &cars_predictions) {
     assert(trajectory.size() == 2);
-    std::vector<double> s_dot_traj = VelocitiesForTrajectory(trajectory);
+    std::vector<double> s_dot_trajectory = VelocitiesForTrajectory(trajectory);
     double final_s_dot, total = 0;
-    final_s_dot = s_dot_traj[s_dot_traj.size() - 1];
+    final_s_dot = s_dot_trajectory[s_dot_trajectory.size() - 1];
     return logistic((kMaxSpeed - final_s_dot) / kMaxSpeed);
 }
 
@@ -133,6 +136,18 @@ double NotMiddleLaneCost(
     assert(trajectory.size() == 2);
     double end_d = trajectory[1][trajectory[1].size() - 1];
     return logistic(pow(end_d - 6, 2));
+}
+
+double CalculateCost(
+    const std::vector<std::vector<double>> &trajectory,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>
+        &cars_predictions,
+    std::vector<std::pair<double, cost_function_base>> &cost_functions) {
+    double total_cost{0};
+    for (auto [cost, cost_function] : cost_functions) {
+        total_cost += cost * cost_function(trajectory, cars_predictions);
+    }
+    return total_cost;
 }
 }  // namespace cost
 }  // namespace path_planning

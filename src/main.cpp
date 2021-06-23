@@ -18,6 +18,7 @@
 #include "path_planning.hpp"
 #include "spline.h"
 #include "traffic.hpp"
+#include "cost.hpp"
 
 // for convenience
 using std::vector;
@@ -321,7 +322,14 @@ int main() {
                                 state, cars_predictions, ego_vehicle, duration, car_ahead);
 
                         vector<vector<double>> trajectory = path_planning::GenerateTrajectory(target_s_and_d, ego_vehicle, duration);
-                        double cost = path_planning::CalculateCost(trajectory, cars_predictions);
+                        std::vector<std::pair<double, path_planning::cost::cost_function_base>> cost_functions= {
+                            {999999.0, path_planning::cost::CollisionCost},
+                            {10, path_planning::cost::BufferCost},
+                            {1000, path_planning::cost::InLaneBufferCost},
+                            {10000, path_planning::cost::EfficiencyCost},
+                            {100, path_planning::cost::NotMiddleLaneCost},
+                        };
+                        double cost = path_planning::cost::CalculateCost(trajectory, cars_predictions, cost_functions);
 
 
                     }

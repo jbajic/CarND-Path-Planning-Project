@@ -7,10 +7,10 @@
 
 namespace path_planning {
 std::vector<std::vector<double>> GenerateTrajectory(
-    const std::vector<std::vector<double>> &target_s_and_d,
+    const std::vector<std::vector<double>> &trajectory,
     traffic::Vehicle &ego_vehicle, const double duration) {
-    std::vector<double> target_s = target_s_and_d[0];
-    std::vector<double> target_d = target_s_and_d[1];
+    std::vector<double> target_s = trajectory[0];
+    std::vector<double> target_d = trajectory[1];
     std::vector<double> current_s = {ego_vehicle.s, ego_vehicle.s_d,
                                      ego_vehicle.s_dd};
     std::vector<double> current_d = {ego_vehicle.d, ego_vehicle.d_d,
@@ -62,8 +62,4 @@ std::vector<double> JMT(std::vector<double> &start, std::vector<double> &end,
     return {a_0, a_1, a_2, sol[0], sol[1], sol[2]};
 }
 
-double CalculateCost(const std::vector<std::vector<double>> &trajectory, const std::unordered_map<int,std::vector<std::pair<double, double>>> &cars_predictions) {
-
-}
-
-}  // namespace path_planning
+} // namespace path_planning

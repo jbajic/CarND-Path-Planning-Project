@@ -7,7 +7,7 @@
 namespace path_planning {
 std::vector<std::vector<double>> GenerateTrajectory(
     const std::vector<std::vector<double>> &target_s_and_d,
-    const traffic::Vehicle &ego_vehicle, const double duration);
+    traffic::Vehicle &ego_vehicle, const double duration);
 
 /**
  * Calculate the Jerk Minimizing Trajectory that connects the initial state
@@ -29,7 +29,5 @@ std::vector<std::vector<double>> GenerateTrajectory(
  */
 std::vector<double> JMT(std::vector<double> &start, std::vector<double> &end,
                         const double T);
-
-double CalculateCost(const std::vector<std::vector<double>> &trajectory, const std::unordered_map<int,std::vector<std::pair<double, double>>> &cars_predictions);
 
 };  // namespace path_planning
