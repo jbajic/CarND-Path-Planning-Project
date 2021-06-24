@@ -1,6 +1,7 @@
 #include "map.hpp"
-#include <sstream>
+
 #include <fstream>
+#include <sstream>
 
 void MapData::ReadMap(const char* map_file) {
     // Load up map values for waypoint's x,y,s and d normalized normal

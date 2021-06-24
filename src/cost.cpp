@@ -22,8 +22,6 @@ constexpr double logistic(double value) {
 constexpr double dt = 0.2;
 constexpr double kMaxObservableDistance = 120;
 
-
-
 double DistanceOfCarInTrajectory(
     const std::vector<std::vector<double>> &trajectory,
     const std::vector<std::pair<double, double>> &car_predictions) {

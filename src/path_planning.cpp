@@ -1,9 +1,10 @@
 #include "path_planning.hpp"
 
+#include <unordered_map>
+#include <vector>
+
 #include "Eigen-3.3/Eigen/Dense"
 #include "constants.hpp"
-#include <vector>
-#include <unordered_map>
 
 namespace path_planning {
 std::vector<std::vector<double>> GenerateTrajectory(
@@ -62,4 +63,4 @@ std::vector<double> JMT(std::vector<double> &start, std::vector<double> &end,
     return {a_0, a_1, a_2, sol[0], sol[1], sol[2]};
 }
 
-} // namespace path_planning
+}  // namespace path_planning

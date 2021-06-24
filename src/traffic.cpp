@@ -2,10 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <iostream>
+#include <limits>
 
 #include "constants.hpp"
+#include "helpers.hpp"
 
 namespace traffic {
 Lane& operator++(Lane& lane) {
@@ -60,6 +61,7 @@ void Vehicle::Init(const nlohmann::json& json_data) {
     s = json_data["s"];
     d = json_data["d"];
     yaw = json_data["yaw"];
+    angle = helpers::deg2rad(yaw);
     speed = json_data["speed"];
     speed *= 0.44704;
     lane = DetermineLane(d);
@@ -84,7 +86,9 @@ double Vehicle::EvaluateCoeffs(const std::vector<double>& coefficients,
     return evaluation;
 }
 
-std::vector<std::string> Vehicle::GetStates() const {return available_states;};
+std::vector<std::string> Vehicle::GetStates() const {
+    return available_states;
+};
 
 void Vehicle::UpdateStates(const bool car_left, const bool car_right) {
     available_states.push_back("KL");
@@ -120,10 +124,11 @@ std::vector<std::pair<double, double>> OtherVehicle::GeneratePrediction(
 }
 
 std::vector<std::vector<double>> GetTargetForState(
-    const std::string &state,
-    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
-    const Vehicle& ego_vehicle,
-    const double duration, const bool car_just_ahead) {
+    const std::string& state,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>&
+        cars_predictions,
+    const Vehicle& ego_vehicle, const double duration,
+    const bool car_just_ahead) {
     int current_lane = ego_vehicle.d / 4;
     int target_lane;
     double target_d{0}, target_d_d{0}, target_d_dd{0};
@@ -149,7 +154,8 @@ std::vector<std::vector<double>> GetTargetForState(
         GetLeadingVehicleDataForLane(target_lane, cars_predictions, ego_vehicle,
                                      duration);
     double leading_vehicle_s = leading_vehicle_s_and_s_d[0];
-    if (leading_vehicle_s - target_s < kTrackingDistance && leading_vehicle_s > ego_vehicle.s) {
+    if (leading_vehicle_s - target_s < kTrackingDistance &&
+        leading_vehicle_s > ego_vehicle.s) {
         target_s_d = leading_vehicle_s_and_s_d[1];
 
         if (std::abs(leading_vehicle_s - target_s) < 0.5 * kTrackingDistance) {
@@ -161,12 +167,14 @@ std::vector<std::vector<double>> GetTargetForState(
         target_s_d = 0.0;
     }
 
-  return {{target_s, target_s_d, target_s_dd}, {target_d, target_d_d, target_d_dd}};
+    return {{target_s, target_s_d, target_s_dd},
+            {target_d, target_d_d, target_d_dd}};
 }
 
 std::vector<double> GetLeadingVehicleDataForLane(
     const int target_lane,
-    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>&
+        cars_predictions,
     const Vehicle& ego_vehicle, const double duration) {
     double nearest_leading_vehicle_speed{0},
         nearest_leading_vehicle_distance = std::numeric_limits<double>::max();

@@ -67,6 +67,7 @@ class Vehicle {
     double s_dd;
     double d_dd;
     double yaw;
+    double angle;
     double speed;
     Lane lane;
 
@@ -77,14 +78,16 @@ class Vehicle {
 };
 
 std::vector<std::vector<double>> GetTargetForState(
-    const std::string &state,
-    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
-    const Vehicle& ego_vehicle,
-    const double duration, const bool car_just_ahead);
+    const std::string& state,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>&
+        cars_predictions,
+    const Vehicle& ego_vehicle, const double duration,
+    const bool car_just_ahead);
 
 std::vector<double> GetLeadingVehicleDataForLane(
     const int target_lane,
-    const std::unordered_map<int, std::vector<std::pair<double, double>>> &cars_predictions,
+    const std::unordered_map<int, std::vector<std::pair<double, double>>>&
+        cars_predictions,
     const Vehicle& ego_vehicle, const double duration);
 
 };  // namespace traffic

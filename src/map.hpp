@@ -1,16 +1,14 @@
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 struct MapData {
     MapData() = default;
 
     void ReadMap(const char* map_file);
 
-    size_t NumberOfPoints() const {
-        return waypoints_x.size();
-    }
+    size_t NumberOfPoints() const { return waypoints_x.size(); }
 
     std::vector<double> waypoints_x;
     std::vector<double> waypoints_y;
@@ -19,7 +17,7 @@ struct MapData {
     std::vector<double> waypoints_dy;
 };
 
-struct Path{
+struct Path {
     std::vector<double> x;
     std::vector<double> y;
     std::vector<double> s;
