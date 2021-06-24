@@ -8,7 +8,7 @@ struct MapData {
 
     void ReadMap(const char* map_file);
 
-    size_t Size() const {
+    size_t NumberOfPoints() const {
         return waypoints_x.size();
     }
 

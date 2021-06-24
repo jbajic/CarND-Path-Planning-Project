@@ -95,7 +95,8 @@ int NextWaypoint(double x, double y, double theta, const MapData &map_data) {
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
 vector<double> GetFrenet(double x, double y, double theta,
                          const vector<double> &points_x,
-                         const vector<double> &points_y) {
+                         const vector<double> &points_y,
+                         const vector<double> &points_s) {
     int next_wp = NextWaypoint(x, y, theta, points_x, points_y);
 
     int prev_wp;
@@ -127,7 +128,7 @@ vector<double> GetFrenet(double x, double y, double theta,
     }
 
     // calculate s value
-    double frenet_s = 0;
+    double frenet_s = points_s[0];
     for (int i = 0; i < prev_wp; ++i) {
         frenet_s += distance(points_x[i], points_y[i], points_x[i + 1],
                              points_y[i + 1]);
@@ -140,7 +141,7 @@ vector<double> GetFrenet(double x, double y, double theta,
 
 vector<double> GetFrenet(double x, double y, double theta,
                          const MapData &map_data) {
-    return GetFrenet(x, y, theta, map_data.waypoints_x, map_data.waypoints_y);
+    return GetFrenet(x, y, theta, map_data.waypoints_x, map_data.waypoints_y, map_data.waypoints_s);
 }
 
 // Transform from Frenet s,d coordinates to Cartesian x,y
@@ -177,14 +178,14 @@ vector<double> Interpolate(const vector<double> &points_x, const vector<double> 
 
     tk::spline s;
     s.set_points(points_x, points_y);
-    std::vector<double> output(output_size);
+    std::vector<double> output;
     for (size_t i = 0; i < output_size; i++) {
         output.push_back(s(points_x[0] + i * step));
     }
     return output;
 }
 
-vector<double> Interpolate(const vector<double> points_x,const vector<double> points_y,
+vector<double> Interpolate(const vector<double> &points_x, const vector<double> &points_y,
                            const vector<double> &coefficients) {
     assert(points_x.size() == points_y.size());
 

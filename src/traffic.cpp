@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <iostream>
 
 #include "constants.hpp"
 
@@ -60,38 +61,38 @@ void Vehicle::Init(const nlohmann::json& json_data) {
     d = json_data["d"];
     yaw = json_data["yaw"];
     speed = json_data["speed"];
+    speed *= 0.44704;
     lane = DetermineLane(d);
+    available_states.clear();
 }
 
 std::vector<double> Vehicle::DifferentiateCoeffs(
-    const std::vector<double>& coeffs) {
-    std::vector<double> diff_coeffs;
-    for (size_t i = 1; i < coeffs.size(); i++) {
-        diff_coeffs.push_back(i * coeffs[i]);
+    const std::vector<double>& coefficients) {
+    std::vector<double> diff_coefficients;
+    for (int i = 1; i < coefficients.size(); i++) {
+        diff_coefficients.push_back(i * coefficients[i]);
     }
-    return diff_coeffs;
+    return diff_coefficients;
 }
 
-double Vehicle::EvaluateCoeffs(const std::vector<double>& coeffs,
+double Vehicle::EvaluateCoeffs(const std::vector<double>& coefficients,
                                const double time) {
-    double eval{0};
-    for (int i = 0; i < coeffs.size(); i++) {
-        eval += coeffs[i] * pow(time, i);
+    double evaluation{0};
+    for (int i = 0; i < coefficients.size(); i++) {
+        evaluation += coefficients[i] * std::pow(time, i);
     }
-    return eval;
+    return evaluation;
 }
 
 std::vector<std::string> Vehicle::GetStates() const {return available_states;};
 
 void Vehicle::UpdateStates(const bool car_left, const bool car_right) {
-    available_states.push_back("KP");
+    available_states.push_back("KL");
 
     if (!car_left && lane > Lane::LEFT) {
-        available_states.push_back("PLCL");
         available_states.push_back("LCL");
     }
     if (!car_right && lane > Lane::RIGHT) {
-        available_states.push_back("PLCR");
         available_states.push_back("LCR");
     }
 }
@@ -105,14 +106,13 @@ OtherVehicle::OtherVehicle(const nlohmann::json& json_data)
       s{json_data[5]},
       d{json_data[6]} {
     speed = std::sqrt(vx * vx + vy * vy);
-    ;
 }
 
 std::vector<std::pair<double, double>> OtherVehicle::GeneratePrediction(
     const double traj_start_time, const double duration) {
     std::vector<std::pair<double, double>> prediction;
     for (size_t i = 0; i < kNumOfSample; i++) {
-        double t = traj_start_time + (i * duration / 20);
+        double t = traj_start_time + (i * duration / kNumOfSample);
         double new_s = s + speed * t;
         prediction.emplace_back(new_s, d);
     }
@@ -129,14 +129,11 @@ std::vector<std::vector<double>> GetTargetForState(
     double target_d{0}, target_d_d{0}, target_d_dd{0};
     double target_s{0}, target_s_d{0}, target_s_dd{0};
 
-    target_s_d =
-        std::min(ego_vehicle.s + kMaxAcceleration / 4 * duration, kMaxSpeed);
-    target_s_d = kMaxSpeed;
-
+    target_s_d = kMaxSpeedMS;
     target_s = ego_vehicle.s + (ego_vehicle.s_d + target_s_d) / 2 * duration;
 
     if (state.compare("KL") == 0) {
-        target_d = static_cast<double>(current_lane) * +2;
+        target_d = static_cast<double>(current_lane) * 4 + 2;
         target_lane = target_d / 4;
     } else if (state.compare("LCL") == 0) {
         target_d = (static_cast<double>(current_lane) - 1) * 4 + 2;
@@ -145,13 +142,15 @@ std::vector<std::vector<double>> GetTargetForState(
         target_d = (static_cast<double>(current_lane) + 1) * 4 + 2;
         target_lane = target_d / 4;
     }
+    std::cout << "Target lane " << target_lane << "\n";
+    // target_lane = target_d / 4;
 
-    std::vector<double> leading_vehicle_s_and_sdot =
+    std::vector<double> leading_vehicle_s_and_s_d =
         GetLeadingVehicleDataForLane(target_lane, cars_predictions, ego_vehicle,
                                      duration);
-    double leading_vehicle_s = leading_vehicle_s_and_sdot[0];
+    double leading_vehicle_s = leading_vehicle_s_and_s_d[0];
     if (leading_vehicle_s - target_s < kTrackingDistance && leading_vehicle_s > ego_vehicle.s) {
-        target_s_d = leading_vehicle_s_and_sdot[1];
+        target_s_d = leading_vehicle_s_and_s_d[1];
 
         if (std::abs(leading_vehicle_s - target_s) < 0.5 * kTrackingDistance) {
             target_s_d -= 1;
@@ -176,15 +175,15 @@ std::vector<double> GetLeadingVehicleDataForLane(
         // int pred_lane = pred_traj[0][1] / 4;
         int pred_lane = prediction[0].first / 4;
         if (pred_lane == target_lane) {
-            double start_s = prediction[0].second;
+            double start_s = prediction[0].first;
             double predicted_end_s = prediction[prediction.size() - 1].first;
             double next_to_last_s = prediction[prediction.size() - 2].first;
             double dt = duration / kNumOfSample;
-            double predicted_s_dot = (predicted_end_s - next_to_last_s) / dt;
+            double predicted_s_d = (predicted_end_s - next_to_last_s) / dt;
             if (predicted_end_s < nearest_leading_vehicle_distance &&
                 start_s > ego_vehicle.s) {
                 nearest_leading_vehicle_distance = predicted_end_s;
-                nearest_leading_vehicle_speed = predicted_s_dot;
+                nearest_leading_vehicle_speed = predicted_s_d;
             }
         }
     }

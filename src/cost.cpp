@@ -31,7 +31,7 @@ double DistanceOfCarInTrajectory(
     for (size_t i = 0; i < kNumOfSample; i++) {
         double current_distance =
             sqrt(pow(trajectory[0][i] - car_predictions[i].first, 2.0) +
-                 pow(trajectory[1][i] - car_predictions[i].second, 2));
+                 pow(trajectory[1][i] - car_predictions[i].second, 2.0));
         if (current_distance < closest_car_distance) {
             closest_car_distance = current_distance;
         }
@@ -126,7 +126,7 @@ double EfficiencyCost(
     std::vector<double> s_dot_trajectory = VelocitiesForTrajectory(trajectory);
     double final_s_dot, total = 0;
     final_s_dot = s_dot_trajectory[s_dot_trajectory.size() - 1];
-    return logistic((kMaxSpeed - final_s_dot) / kMaxSpeed);
+    return logistic((kMaxSpeedMS - final_s_dot) / kMaxSpeedMS);
 }
 
 double NotMiddleLaneCost(

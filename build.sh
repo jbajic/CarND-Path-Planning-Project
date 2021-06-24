@@ -1,17 +1,21 @@
 #!/bin/bash
 
+set -euo pipefail
+
 arg=${1:-}
 
 mkdir -p build
 pushd build
   rm -rf *
-  if [[ ${arg} -eq DEBUG ]]; then
-      cmake -DCMAKE_BUILD_TYPE=DEBUG..
-      make
-    ./build/path_planning
+  if [[ ${arg} == "DEBUG" ]]; then
+    echo Debugging
+    cmake -DCMAKE_BUILD_TYPE=DEBUG ..
+    make
+    gdb --args ./path_planning
   else
+    echo Running
     cmake ..
     make
-  ./build/path_planning
+    ./path_planning
   fi
 popd
