@@ -64,26 +64,12 @@ void Vehicle::Init(const nlohmann::json& json_data) {
     angle = helpers::deg2rad(yaw);
     speed = json_data["speed"];
     speed *= 0.44704;
+    s_d = speed;
+    s_dd = 0;
+    d_d = 0;
+    d_dd = 0;
     lane = DetermineLane(d);
     available_states.clear();
-}
-
-std::vector<double> Vehicle::DifferentiateCoeffs(
-    const std::vector<double>& coefficients) {
-    std::vector<double> diff_coefficients;
-    for (int i = 1; i < coefficients.size(); i++) {
-        diff_coefficients.push_back(i * coefficients[i]);
-    }
-    return diff_coefficients;
-}
-
-double Vehicle::EvaluateCoeffs(const std::vector<double>& coefficients,
-                               const double time) {
-    double evaluation{0};
-    for (int i = 0; i < coefficients.size(); i++) {
-        evaluation += coefficients[i] * std::pow(time, i);
-    }
-    return evaluation;
 }
 
 std::vector<std::string> Vehicle::GetStates() const {

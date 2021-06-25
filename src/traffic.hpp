@@ -54,10 +54,6 @@ class Vehicle {
 
     void UpdateStates(const bool car_left, const bool car_right);
 
-    std::vector<double> DifferentiateCoeffs(const std::vector<double>& coeffs);
-
-    double EvaluateCoeffs(const std::vector<double>& coeffs, const double time);
-
     double x;
     double y;
     double s;

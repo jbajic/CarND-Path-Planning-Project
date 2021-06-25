@@ -40,95 +40,59 @@ int GetLaneDistance(traffic::Lane lane) {
     }
 }
 
+constexpr double DeriveByTime(double v1, double v2) {
+    return (v1 - v2) / kTimeDelta;
+}
+
 void SetupFrenetParametersOnEgoVehicle(const vector<double>& previous_path_x,
                                        const vector<double>& previous_path_y,
                                        int previous_path_size,
                                        const Path& interpolated_points,
                                        traffic::Vehicle& ego_vehicle) {
-    double pos_s, s_d, s_dd, pos_d, d_d, d_dd;
-    double pos_x, pos_y, pos_x2, pos_y2, angle, vel_x1, vel_y1,
-        pos_x3, pos_y3, vel_x2, vel_y2, acc_x, acc_y;
-
-    if (previous_path_size < 4) {
-        pos_x = ego_vehicle.x;
-        pos_y = ego_vehicle.y;
-        angle = ego_vehicle.yaw;
-        pos_s = ego_vehicle.s;
-        pos_d = ego_vehicle.d;
-        s_d = ego_vehicle.speed;
-        d_d = 0;
-        s_dd = 0;
-        d_dd = 0;
-    } else {
+    if (previous_path_size > 3) {
+        double pos_s, s_d, s_dd, pos_d, d_d, d_dd;
+        double pos_x, pos_y, pos_x2, pos_y2, angle, vel_x1, vel_y1, pos_x3,
+            pos_y3, vel_x2, vel_y2, acc_x, acc_y;
         pos_x = previous_path_x[previous_path_size - 1];
         pos_y = previous_path_y[previous_path_size - 1];
         pos_x2 = previous_path_x[previous_path_size - 2];
         pos_y2 = previous_path_y[previous_path_size - 2];
         angle = atan2(pos_y - pos_y2, pos_x - pos_x2);
 
-        std::vector<double> frenet = helpers::GetFrenet(
-            pos_x, pos_y, angle, interpolated_points.x,
-            interpolated_points.y, interpolated_points.s);
+        std::vector<double> frenet =
+            helpers::GetFrenet(pos_x, pos_y, angle, interpolated_points.x,
+                               interpolated_points.y, interpolated_points.s);
         pos_s = frenet[0];
         pos_d = frenet[1];
 
         int next_interp_waypoint_index = helpers::NextWaypoint(
-            pos_x, pos_y, angle, interpolated_points.x,
-            interpolated_points.y);
+            pos_x, pos_y, angle, interpolated_points.x, interpolated_points.y);
 
-        double dx = interpolated_points
-                        .dx[next_interp_waypoint_index - 1];
-        double dy = interpolated_points
-                        .dy[next_interp_waypoint_index - 1];
-
+        double dx = interpolated_points.dx[next_interp_waypoint_index - 1];
+        double dy = interpolated_points.dy[next_interp_waypoint_index - 1];
         double sx = -dy;
         double sy = dx;
-        vel_x1 = (pos_x - pos_x2) / kTimeDelta;
-        vel_y1 = (pos_y - pos_y2) / kTimeDelta;
+
+        vel_x1 = DeriveByTime(pos_x, pos_x2);
+        vel_y1 = DeriveByTime(pos_y, pos_y2);
         s_d = vel_x1 * sx + vel_y1 * sy;
         d_d = vel_x1 * dx + vel_y1 * dy;
 
         pos_x3 = previous_path_x[previous_path_size - 3];
         pos_y3 = previous_path_y[previous_path_size - 3];
-        vel_x2 = (pos_x2 - pos_x3) / kTimeDelta;
-        vel_y2 = (pos_y2 - pos_y3) / kTimeDelta;
-        acc_x = (vel_x1 - vel_x2) / kTimeDelta;
-        acc_y = (vel_y1 - vel_y2) / kTimeDelta;
+        vel_x2 = DeriveByTime(pos_x2, pos_x3);
+        vel_y2 = DeriveByTime(pos_y2, pos_y3);
+        acc_x = DeriveByTime(vel_x1, vel_x2);
+        acc_y = DeriveByTime(vel_y1, vel_y2);
         s_dd = acc_x * sx + acc_y * sy;
         d_dd = acc_x * dx + acc_y * dy;
-
-        double eval_time, pos_s2, pos_d2, s_d2, d_d2, s_dd2,
-            d_dd2;
-        auto s_d_coeffs = ego_vehicle.DifferentiateCoeffs(
-            ego_vehicle.s_traj_coeffs);
-        auto d_d_coeffs = ego_vehicle.DifferentiateCoeffs(
-            ego_vehicle.d_traj_coeffs);
-        auto s_dd_coeffs =
-            ego_vehicle.DifferentiateCoeffs(s_d_coeffs);
-        auto d_dd_coeffs =
-            ego_vehicle.DifferentiateCoeffs(d_d_coeffs);
-
-        eval_time =
-            (kNumOfPoints - previous_path_size) * kTimeDelta;
-        pos_s2 = ego_vehicle.EvaluateCoeffs(
-            ego_vehicle.s_traj_coeffs, eval_time);
-        pos_d2 = ego_vehicle.EvaluateCoeffs(
-            ego_vehicle.d_traj_coeffs, eval_time);
-        s_d2 =
-            ego_vehicle.EvaluateCoeffs(s_d_coeffs, eval_time);
-        d_d2 =
-            ego_vehicle.EvaluateCoeffs(d_d_coeffs, eval_time);
-        s_dd2 =
-            ego_vehicle.EvaluateCoeffs(s_dd_coeffs, eval_time);
-        d_dd2 =
-            ego_vehicle.EvaluateCoeffs(d_dd_coeffs, eval_time);
+        ego_vehicle.s = pos_s;
+        ego_vehicle.s_d = s_d;
+        ego_vehicle.s_dd = s_dd;
+        ego_vehicle.d = pos_d;
+        ego_vehicle.d_d = d_d;
+        ego_vehicle.d_dd = d_dd;
     }
-    ego_vehicle.s = pos_s;
-    ego_vehicle.s_d = s_d;
-    ego_vehicle.s_dd = s_dd;
-    ego_vehicle.d = pos_d;
-    ego_vehicle.d_d = d_d;
-    ego_vehicle.d_dd = d_dd;
 }
 
 int main() {
@@ -243,7 +207,9 @@ int main() {
                     // Finish interpolation
 
                     // Determine ego vehicle
-                    SetupFrenetParametersOnEgoVehicle(previous_path_x, previous_path_y,previous_path_size, interpolated_points, ego_vehicle);
+                    SetupFrenetParametersOnEgoVehicle(
+                        previous_path_x, previous_path_y, previous_path_size,
+                        interpolated_points, ego_vehicle);
 
                     vector<traffic::OtherVehicle> vehicles;
                     std::unordered_map<int,
