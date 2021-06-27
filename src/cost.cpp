@@ -124,7 +124,7 @@ double EfficiencyCost(
     std::vector<double> s_dot_trajectory = VelocitiesForTrajectory(trajectory);
     double final_s_dot, total = 0;
     final_s_dot = s_dot_trajectory[s_dot_trajectory.size() - 1];
-    return logistic((kMaxSpeedMS - final_s_dot) / kMaxSpeedMS);
+    return logistic((kTrackLengthpeedMS - final_s_dot) / kTrackLengthpeedMS);
 }
 
 double NotMiddleLaneCost(

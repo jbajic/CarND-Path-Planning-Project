@@ -93,6 +93,10 @@ void SetupFrenetParametersOnEgoVehicle(const vector<double>& previous_path_x,
         ego_vehicle.d_d = d_d;
         ego_vehicle.d_dd = d_dd;
     }
+
+    std::cout << "Ego vehicle\n";
+    std::cout << "(x,y,s,d)=" << "( " << ego_vehicle.x <<", " << ego_vehicle.y << ", " << ego_vehicle.s << ", " << ego_vehicle.d << ")\n";
+    std::cout << "(s_d,s_dd,d_d,d_dd)=" << "( " << ego_vehicle.s_d <<", " << ego_vehicle.s_dd << ", " << ego_vehicle.d_d << ", " << ego_vehicle.d_dd << ")\n";
 }
 
 int main() {
@@ -104,6 +108,8 @@ int main() {
     map_data.ReadMap(kMapFile);
     traffic::Vehicle ego_vehicle;
     static int iteration = 0;
+    //std::freopen( "output.txt", "w", stdout );
+    //std::freopen( "error.txt", "w", stderr );
 
     h.onMessage([&map_data, &ego_vehicle](uWS::WebSocket<uWS::SERVER> ws,
                                           char* data, size_t length,
@@ -141,7 +147,6 @@ int main() {
                      */
 
                     // Prediction
-                    std::cout << "START prediction\n";
                     const int previous_path_size =
                         std::min(25, static_cast<int>(previous_path_x.size()));
                     const double trajectory_start_time =
@@ -150,26 +155,27 @@ int main() {
                         kNumOfSample * dt - previous_path_size * kTimeDelta;
 
                     // Define next waypoints
-                    std::cout << "START Define next waypoints\n";
                     Path path;
                     int next_waypoints_id =
                         helpers::NextWaypoint(ego_vehicle.x, ego_vehicle.y,
                                               ego_vehicle.yaw, map_data);
+                    const double next_waypoint_s =
+                        map_data.waypoints_s[next_waypoints_id];
+                    int num_waypoints = map_data.NumberOfPoints();
                     for (int i = -5; i < 5; i++) {
                         int waypoint_id =
-                            (next_waypoints_id + i) % map_data.NumberOfPoints();
+                            (next_waypoints_id + i) % num_waypoints;
                         if (waypoint_id < 0) {
-                            waypoint_id += map_data.NumberOfPoints();
+                            waypoint_id += num_waypoints;
                         }
-                        double current_s = map_data.waypoints_s[waypoint_id];
-                        const double next_s =
-                            map_data.waypoints_s[next_waypoints_id];
 
                         // make points continuos for spline functionality
-                        if (i < 0 && current_s > next_s) {
-                            current_s -= kMaxS;
-                        } else if (i > 0 && current_s < next_s) {
-                            current_s += kMaxS;
+                        double current_s = map_data.waypoints_s[waypoint_id];
+                        if (i < 0 && current_s > next_waypoint_s) {
+                            current_s -= kTrackLength;
+                        }
+                        if (i > 0 && current_s < next_waypoint_s) {
+                            current_s += kTrackLength;
                         }
 
                         path.x.push_back(map_data.waypoints_x[waypoint_id]);
@@ -350,6 +356,7 @@ int main() {
                                      (fabs(target_s_d - current_v)) * 0.125;
                         }
                         current_v += v_incr;
+                        current_v = std::min(current_v, kTrackLengthpeedMS);
                         current_s += current_v * kTimeDelta;
                         interpolated_s_trajectory.push_back(current_s);
                     }

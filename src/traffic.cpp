@@ -69,6 +69,9 @@ void Vehicle::Init(const nlohmann::json& json_data) {
     d_d = 0;
     d_dd = 0;
     lane = DetermineLane(d);
+    std::cout << "Ego vehicle1 :\n";
+    std::cout << "(x, y), (s,d): ( " << x << ", " << y << "), ( " << s <<", " << d << ")\n";
+    std::cout << "(s_d, s_dd), (d_d,d_dd): ( " << s_d << ", " << s_dd << "), ( " << d_d <<", " << d_dd << ")\n";
     available_states.clear();
 }
 
@@ -120,9 +123,12 @@ std::vector<std::vector<double>> GetTargetForState(
     double target_d{0}, target_d_d{0}, target_d_dd{0};
     double target_s{0}, target_s_d{0}, target_s_dd{0};
 
-    target_s_d = kMaxSpeedMS;
+    target_s_d = kTrackLengthpeedMS;
     target_s = ego_vehicle.s + (ego_vehicle.s_d + target_s_d) / 2 * duration;
-
+    std::cout << "Ego vehicle2 :\n";
+    std::cout << "Equation: "  << ego_vehicle.s << " + " << ego_vehicle.s_d  << " + " << target_s_d << " / 2 * " << duration << "\n";
+    std::cout << "(x, y), (s,d): ( " << ego_vehicle.x << ", " << ego_vehicle.y << "), ( " << ego_vehicle.s <<", " << ego_vehicle.d << ")\n";
+    std::cout << "(s_d, s_dd), (d_d,d_dd): ( " << ego_vehicle.s_d << ", " << ego_vehicle.s_dd << "), ( " << ego_vehicle.d_d <<", " << ego_vehicle.d_dd << ")\n";
     if (state.compare("KL") == 0) {
         target_d = static_cast<double>(current_lane) * 4 + 2;
         target_lane = target_d / 4;
@@ -133,8 +139,7 @@ std::vector<std::vector<double>> GetTargetForState(
         target_d = (static_cast<double>(current_lane) + 1) * 4 + 2;
         target_lane = target_d / 4;
     }
-    std::cout << "Target lane " << target_lane << "\n";
-    // target_lane = target_d / 4;
+
 
     std::vector<double> leading_vehicle_s_and_s_d =
         GetLeadingVehicleDataForLane(target_lane, cars_predictions, ego_vehicle,
@@ -152,7 +157,9 @@ std::vector<std::vector<double>> GetTargetForState(
     if (car_just_ahead) {
         target_s_d = 0.0;
     }
-
+        std::cout << "Target lane " << target_lane << "\n";
+    std::cout << "Target d " << target_d << "\n";
+    std::cout << "Target s " << target_s << "\n";
     return {{target_s, target_s_d, target_s_dd},
             {target_d, target_d_d, target_d_dd}};
 }

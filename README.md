@@ -65,12 +65,6 @@ the path has processed since last time.
 
 2. There will be some latency between the simulator running and the path planner returning a path, with optimized code usually its not very long maybe just 1-3 time steps. During this delay the simulator will continue using points that it was last given, because of this its a good idea to store the last points you have used so you can have a smooth transition. previous_path_x, and previous_path_y can be helpful for this transition since they show the last points given to the simulator controller with the processed points already removed. You would either return a path that extends this previous path or make sure to create a new path that has a smooth transition with this last path.
 
-## Tips
-
-A really helpful resource for doing this project and creating smooth trajectories was using http://kluge.in-chemnitz.de/opensource/spline/, the spline function is in a single hearder file is really easy to use.
-
----
-
 ## Dependencies
 
 * cmake >= 3.5
@@ -101,45 +95,12 @@ using the following settings:
 * indent using spaces
 * set tab width to 2 spaces (keeps the matrices in source code aligned)
 
-## Code Style
+## How does it work?
 
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
+Well it can definitely be improved, lets discuss what it does currently and what it could do?
 
-## Project Instructions and Rubric
+The Code can be separated into a part that loads and transforms data from ego vehicle and other vehicles. After that a set of waypoints from previous path is selected to determine ego vehicles parameters and determine Frenet coordinate speed and acceleration.
 
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
+After that has been done we predict and generate trajectories for every other vehicle in order to know which state we can assume. This part can be definitely improved using some sort of FSM instead we just determine to change left,right or keep lane. After that we create trajectories for every of these states, and improve on them using JMT (Jerk Minimizing Trajectory) function.
 
-
-## Call for IDE Profiles Pull Requests
-
-Help your fellow students!
-
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
+Then we use a set of cost functions to determine which of these trajectories would be the best to follow. And then we execute the best generated trajectory.
