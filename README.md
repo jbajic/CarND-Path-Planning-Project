@@ -104,3 +104,40 @@ The Code can be separated into a part that loads and transforms data from ego ve
 After that has been done we predict and generate trajectories for every other vehicle in order to know which state we can assume. This part can be definitely improved using some sort of FSM instead we just determine to change left,right or keep lane. After that we create trajectories for every of these states, and improve on them using JMT (Jerk Minimizing Trajectory) function.
 
 Then we use a set of cost functions to determine which of these trajectories would be the best to follow. And then we execute the best generated trajectory.
+
+## Components
+
+### Map
+This component simply keeps all the data that is related to the map (waypoints of x,y,s,d,dx,dy coordinates)
+
+### Traffic
+This component has two main parts Vehicle (which represents ego vehicle) and OtherVehicle which represents all other vehicles that are being represented in sensor_fusion.
+
+`Vehicle` contains logic for parsing data from received JSON and updating the available states.
+`OtherVehicle` also contains logic for parsing data from received JSON and predicting the position of the vehicle for a given time.
+
+Here are also helper functions `GetTargetForState` which for a given state (KeepLane, ChangeRight, ChangeLeft) produce target `(s, s_d, s_dd, d, d_d, d_dd)` values which are Frenet coordinates and their respective derivatives. To do that successfully it uses other helper function `GetLeadingVehicleDataForLane` which limits the creating of target coordinates to avoid hitting other vehicles in the lane for which the coordinates are designed for.
+
+### Path Planning
+
+This module serves to generate trajectory for a set of desired target coordinates. GIven start and end coordinates `(s, s_d, s_dd, d, d_d, d_dd)` it produces the trajectory using JMT (Jerk Minimizing Trajectory).
+
+### Cost
+
+Here are cost functions located currently only these are being used:
+ - Collision Cost => punishes trajectory with collisions
+ - Buffer Cost => prefers trajectory as apart from other vehicles as possible
+ - In LaneBuffer Cost = prefers trajectory as apart from other vehicles as possible in the lane
+ - EfficiencyCost = prefers bigger speeds
+ - Not Middle lane Cost => prefers middle lane
+
+## How it all fits together?
+
+1. Load Map
+2. Start communication with simulator
+3. Load ego vehicle data
+4. Interpolate waypoints on the map for smoother trajectory
+5. Define starting point and with it the Frenet coordinates and derivatives of efo vehicle using previous path
+6. Load other vehicles and predict their trajectories
+7. Update ego vehicle availabe states from the data gained in sensor fusion part
+8. Generate trajectories for every available state and pick the best one
